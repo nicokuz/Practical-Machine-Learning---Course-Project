@@ -1,0 +1,85 @@
+---
+title: "Practical Machine Learning Course Project"
+author: "Nicolas E. Kuzminski - 2019-02-12"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library(caret)
+library(e1071)
+library(randomForest)
+set.seed(1971)
+```
+
+
+## Executive Summary
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, the goal will be to use data from accelerometers to predict the manner in which participants did a physical exercise. More information about the source dataset is available from the website here: http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+
+## Dataset
+
+The dataset available for prediction model training has 19622 observations. 
+The *classe* variable is what we want to predict, one of each 5 manners in which the participants did a Unilateral Dumbbell Biceps Curl exercise: Exactly according to the specification (Class A), throwing the elbows to the front (Class B), lifting the dumbbell only halfway (Class C), lowering the dumbbell only halfway (Class D) or throwing the hips to the front (Class E). 
+As possible predictors the dataset has 52 numeric variables that were measured for each observation.  
+
+```{r loading}
+download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv", "pml-training.csv")
+
+rawtraining <- read.csv("pml-training.csv")
+
+# Take "classe" and the 52 variables for training 
+training <- rawtraining %>% 
+  select(classe, matches("^(roll|pitch|yaw|total|gyros|magnet|accel)"))
+
+dim(training)
+```
+
+
+## Training
+
+Random Forest was selected as the machine learning method that gave best accuracies for this project. Other algorithms where evaluated, isolated or in stacked combinations, without getting better results, like SVM or Boosted models.
+For fine tuning the mtry random forest parameter, 5 possible values are evaluated, since we observed that some slightly better accuracies were oversight with just the default (3), but not so much with more values than 5.
+As for a better out of sample estimation, a 10-fold cross validation technique was used 3 times for each training. That gives accuracies up to *99.6%* on the training dataset, with an estimated error rate of *0.3%* on the final selected model. Higher validation parameters didn't much increased these estimations.    
+
+```{r training, cache=TRUE}
+# 10 k-fold cross validation, repeated 3 times
+control <- trainControl(method="repeatedcv", number=10, repeats=3)
+
+# Random Forest model Training (evaluating 5 mtry parameter values)
+modeltraining <- train(classe ~ ., training, method = "rf", trControl = control, tuneLength = 5) 
+
+# Training Summary
+modeltraining
+
+# Model selected
+modeltraining$finalModel
+```
+
+
+## Testing 
+
+For testing a dataset 20 observations where provided, these are the prediction results.
+Allmost all predictions have over *80%* or *90%* classification probability. 
+
+```{r testing}
+
+# Testing dataset loading
+download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv", "pml-testing.csv")
+rawtesting <- read.csv("pml-testing.csv")
+
+# Prediction results (with probabilities)   
+data.frame(
+  problem_id = rawtesting$problem_id, 
+  prediction = predict(modeltraining, rawtesting),
+  probability = apply(predict(modeltraining, rawtesting, type = "prob"),1,max)
+)
+```
+
+
+## Conclusion
+
+In this controlled environment, the different manners in which the physical exercises were performed, could be determined with somewhat good accuracy. This could serve as proof of concept for further developments.
+
